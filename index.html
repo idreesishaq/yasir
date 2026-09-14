@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nebula Viewer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-void:#07060d;
+    --bg-deep:#0d0a1f;
+    --nebula-violet:#7b3fe4;
+    --nebula-magenta:#e94fd8;
+    --nebula-cyan:#45e8d8;
+    --accent-gold:#f2c14e;
+    --text-primary:#f3eefc;
+    --text-muted:#a89bc9;
+    --frame-radius:16px;
+  }
+
+  *{ box-sizing:border-box; }
+
+  html,body{
+    height:100%;
+    margin:0;
+    background:var(--bg-void);
+    color:var(--text-primary);
+    font-family:'Space Grotesk', sans-serif;
+    overflow:hidden;
+  }
+
+  button{ font-family:inherit; }
+
+  .app{
+    position:relative;
+    height:100vh;
+    height:100dvh;
+    display:flex;
+    flex-direction:column;
+    isolation:isolate;
+  }
+
+  /* ---------- Backdrop ---------- */
+  #starfield{
+    position:fixed;
+    inset:0;
+    z-index:0;
+    display:block;
+  }
+
+  .ambient-glow{
+    position:fixed;
+    inset:0;
+    z-index:0;
+    pointer-events:none;
+    background:
+      radial-gradient(60% 50% at 18% 12%, rgba(123,63,228,0.28), transparent 60%),
+      radial-gradient(50% 45% at 85% 20%, rgba(233,79,216,0.20), transparent 60%),
+      radial-gradient(55% 50% at 50% 100%, rgba(69,232,216,0.14), transparent 60%);
+  }
+
+  /* ---------- Topbar ---------- */
+  .topbar{
+    position:relative;
+    z-index:5;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:16px;
+    padding:20px 24px;
+    flex-wrap:wrap;
+  }
+
+  .brand{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    font-family:'Unbounded', sans-serif;
+    font-weight:700;
+    font-size:16px;
+    letter-spacing:0.01em;
+  }
+
+  .brand-mark{
+    display:inline-block;
+    color:var(--accent-gold);
+    filter:drop-shadow(0 0 6px rgba(242,193,78,0.7));
+    font-size:18px;
+    transform:translateY(-1px);
+  }
+
+  .mode-toggle{
+    position:relative;
+    display:flex;
+    background:rgba(255,255,255,0.05);
+    border:1px solid rgba(255,255,255,0.09);
+    border-radius:999px;
+    padding:4px;
+    backdrop-filter:blur(10px);
+  }
+
+  .mode-slider{
+    position:absolute;
+    top:4px; bottom:4px;
+    left:4px;
+    width:calc(50% - 4px);
+    border-radius:999px;
+    background:linear-gradient(120deg, var(--nebula-violet), var(--nebula-magenta));
+    box-shadow:0 0 18px rgba(233,79,216,0.55);
+    transition:transform 0.35s cubic-bezier(.65,0,.35,1);
+    z-index:0;
+  }
+
+  .mode-toggle[data-mode="carousel"] .mode-slider{
+    transform:translateX(100%);
+  }
+
+  .mode-btn{
+    position:relative;
+    z-index:1;
+    border:none;
+    background:transparent;
+    color:var(--text-muted);
+    padding:9px 20px;
+    border-radius:999px;
+    font-size:13.5px;
+    font-weight:500;
+    cursor:pointer;
+    transition:color 0.3s ease;
+  }
+
+  .mode-btn.active{ color:var(--text-primary); }
+
+  .mode-btn:focus-visible{
+    outline:2px solid var(--accent-gold);
+    outline-offset:2px;
+  }
+
+  .upload-btn{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    padding:9px 18px;
+    border-radius:999px;
+    border:1px solid rgba(255,255,255,0.14);
+    color:var(--text-primary);
+    font-size:13.5px;
+    cursor:pointer;
+    background:rgba(255,255,255,0.03);
+    transition:border-color 0.25s ease, background 0.25s ease;
+  }
+  .upload-btn:hover{
+    border-color:var(--nebula-cyan);
+    background:rgba(69,232,216,0.08);
+  }
+  .upload-btn:has(input:focus-visible){
+    outline:2px solid var(--accent-gold);
+    outline-offset:2px;
+  }
+
+  /* ---------- Stage ---------- */
+  .stage-area{
+    position:relative;
+    z-index:2;
+    flex:1;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    min-height:0;
+    padding:0 96px;
+  }
+
+  .nav-arrow{
+    position:fixed;
+    top:50%;
+    transform:translateY(-50%);
+    z-index:6;
+    width:52px;
+    height:52px;
+    border-radius:50%;
+    border:1px solid rgba(255,255,255,0.14);
+    background:rgba(13,10,31,0.55);
+    backdrop-filter:blur(8px);
+    color:var(--text-primary);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    cursor:pointer;
+    transition:transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
+  }
+  .nav-arrow svg{ width:20px; height:20px; }
+  .nav-left{ left:22px; }
+  .nav-right{ right:22px; }
+
+  .nav-arrow:hover{
+    border-color:var(--nebula-cyan);
+    box-shadow:0 0 22px rgba(69,232,216,0.35);
+    background:rgba(13,10,31,0.8);
+  }
+  .nav-left:hover{ transform:translateY(-50%) translateX(-3px); }
+  .nav-right:hover{ transform:translateY(-50%) translateX(3px); }
+
+  .nav-arrow:focus-visible{
+    outline:2px solid var(--accent-gold);
+    outline-offset:3px;
+  }
+
+  .nav-arrow.hidden{
+    opacity:0;
+    pointer-events:none;
+    transform:translateY(-50%) scale(0.8);
+  }
+
+  .frame{
+    position:relative;
+    width:min(78vw, 920px);
+    height:min(64vh, 600px);
+    border-radius:var(--frame-radius);
+    padding:3px;
+    background:conic-gradient(from var(--angle,0deg),
+      var(--nebula-violet), var(--nebula-magenta), var(--nebula-cyan), var(--accent-gold), var(--nebula-violet));
+    animation:rotateBorder 10s linear infinite;
+    box-shadow:0 20px 60px rgba(0,0,0,0.55);
+  }
+
+  @property --angle{
+    syntax:'<angle>';
+    initial-value:0deg;
+    inherits:false;
+  }
+
+  @keyframes rotateBorder{
+    to{ --angle:360deg; }
+  }
+
+  .frame-inner{
+    position:relative;
+    width:100%;
+    height:100%;
+    border-radius:calc(var(--frame-radius) - 3px);
+    overflow:hidden;
+    background:var(--bg-deep);
+  }
+
+  .image-layers{
+    position:absolute;
+    inset:0;
+  }
+
+  .image-layers img{
+    position:absolute;
+    inset:0;
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    opacity:0;
+    transition:opacity 0.9s ease;
+  }
+
+  .image-layers img.visible{
+    opacity:1;
+  }
+
+  .image-layers img.kenburns{
+    animation:kenburns 9s ease-out forwards;
+  }
+
+  @keyframes kenburns{
+    from{ transform:scale(1.06); }
+    to{ transform:scale(1); }
+  }
+
+  /* ---------- Footer ---------- */
+  .footer{
+    position:relative;
+    z-index:5;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:14px;
+    padding:18px 24px 26px;
+  }
+
+  .tagline{
+    margin:0;
+    font-family:'Unbounded', sans-serif;
+    font-size:13px;
+    font-weight:500;
+    letter-spacing:0.02em;
+    color:var(--text-muted);
+    text-align:center;
+  }
+
+  .dots{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    justify-content:center;
+    max-width:70vw;
+  }
+
+  .dot{
+    width:7px;
+    height:7px;
+    border-radius:50%;
+    background:rgba(255,255,255,0.2);
+    border:none;
+    cursor:pointer;
+    padding:0;
+    transition:background 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
+  }
+
+  .dot.active{
+    background:var(--accent-gold);
+    box-shadow:0 0 10px rgba(242,193,78,0.7);
+    transform:scale(1.3);
+  }
+
+  .dot:focus-visible{
+    outline:2px solid var(--accent-gold);
+    outline-offset:3px;
+  }
+
+  .counter{
+    font-size:12px;
+    color:var(--text-muted);
+    letter-spacing:0.03em;
+  }
+
+  .notice{
+    margin:0;
+    font-size:11.5px;
+    color:rgba(168,155,201,0.75);
+    text-align:center;
+    max-width:480px;
+  }
+
+  /* ---------- Responsive ---------- */
+  @media (max-width: 720px){
+    .stage-area{ padding:0 14px; }
+    .nav-arrow{ width:42px; height:42px; }
+    .nav-left{ left:8px; }
+    .nav-right{ right:8px; }
+    .frame{ width:min(88vw, 920px); height:min(50vh, 600px); }
+    .topbar{ padding:16px; }
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .frame{ animation:none; }
+    .image-layers img.kenburns{ animation:none; }
+    .mode-slider{ transition:none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <canvas id="starfield"></canvas>
+  <div class="ambient-glow"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">✦</span>
+      <span class="brand-name">Nebula Viewer</span>
+    </div>
+
+    <div class="mode-toggle" id="modeToggle" data-mode="default">
+      <div class="mode-slider"></div>
+      <button class="mode-btn active" data-mode="default" aria-pressed="true">Default</button>
+      <button class="mode-btn" data-mode="carousel" aria-pressed="false">Carousel</button>
+    </div>
+
+    <label class="upload-btn">
+      <input type="file" id="fileInput" accept="image/*" multiple hidden>
+      Add images
+    </label>
+  </header>
+
+  <main class="stage-area">
+    <button class="nav-arrow nav-left" id="prevBtn" aria-label="Previous image">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M15 18l-6-6 6-6"/>
+      </svg>
+    </button>
+
+    <div class="frame">
+      <div class="frame-inner">
+        <div class="image-layers" id="imageLayers"></div>
+      </div>
+    </div>
+
+    <button class="nav-arrow nav-right" id="nextBtn" aria-label="Next image">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 18l6-6-6-6"/>
+      </svg>
+    </button>
+  </main>
+
+  <footer class="footer">
+    <p class="tagline" id="tagline">Every image, a new constellation.</p>
+    <p class="notice" id="folderNotice" hidden>Showing demo artwork — no images found in an "images" folder next to this file. Serve this page over a local server, or use "Add images" above.</p>
+    <div class="dots" id="dots" role="tablist" aria-label="Choose image"></div>
+    <span class="counter" id="counter" aria-live="polite">1 / 6</span>
+  </footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---------------- Starfield backdrop ---------------- */
+  const canvas = document.getElementById('starfield');
+  const ctx = canvas.getContext('2d');
+  let stars = [];
+
+  function resizeCanvas(){
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    const count = Math.floor((canvas.width * canvas.height) / 9000);
+    stars = Array.from({length: count}, () => ({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      r: Math.random() * 1.3 + 0.2,
+      baseAlpha: Math.random() * 0.6 + 0.2,
+      phase: Math.random() * Math.PI * 2,
+      speed: Math.random() * 0.015 + 0.004,
+      gold: Math.random() < 0.12
+    }));
+  }
+
+  function drawStars(t){
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    for(const s of stars){
+      const a = reduceMotion ? s.baseAlpha : s.baseAlpha + Math.sin(t * s.speed + s.phase) * 0.25;
+      ctx.beginPath();
+      ctx.fillStyle = s.gold ? `rgba(242,193,78,${Math.max(a,0)})` : `rgba(243,238,252,${Math.max(a,0)})`;
+      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if(!reduceMotion){
+      requestAnimationFrame(drawStars);
+    }
+  }
+
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+  requestAnimationFrame(drawStars);
+  if(reduceMotion){ drawStars(0); }
+
+  /* ---------------- Procedural space-art generator ---------------- */
+  function mulberry32(seed){
+    return function(){
+      seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  const HUES = [265, 320, 190, 300, 210, 45];
+
+  function generateSpaceArt(seed){
+    const rand = mulberry32(seed * 977 + 13);
+    const w = 1400, h = 900;
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const g = c.getContext('2d');
+
+    // base
+    const bg = g.createRadialGradient(w*0.5, h*0.4, 0, w*0.5, h*0.4, w*0.75);
+    bg.addColorStop(0, '#171233');
+    bg.addColorStop(0.55, '#0d0a1f');
+    bg.addColorStop(1, '#07060d');
+    g.fillStyle = bg;
+    g.fillRect(0, 0, w, h);
+
+    const hueA = HUES[Math.floor(rand() * HUES.length)];
+    let hueB = HUES[Math.floor(rand() * HUES.length)];
+    if(hueB === hueA) hueB = (hueA + 90) % 360;
+
+    // nebula blobs
+    g.globalCompositeOperation = 'lighter';
+    const blobCount = 4 + Math.floor(rand() * 3);
+    for(let i = 0; i < blobCount; i++){
+      const hue = i % 2 === 0 ? hueA : hueB;
+      const cx = rand() * w, cy = rand() * h * 0.85;
+      const r = w * (0.18 + rand() * 0.28);
+      const grad = g.createRadialGradient(cx, cy, 0, cx, cy, r);
+      const sat = 75 + rand() * 15;
+      grad.addColorStop(0, `hsla(${hue}, ${sat}%, 62%, ${0.30 + rand()*0.18})`);
+      grad.addColorStop(1, `hsla(${hue}, ${sat}%, 40%, 0)`);
+      g.fillStyle = grad;
+      g.beginPath();
+      g.arc(cx, cy, r, 0, Math.PI*2);
+      g.fill();
+    }
+    g.globalCompositeOperation = 'source-over';
+
+    // optional planet
+    if(rand() < 0.6){
+      const px = w * (0.2 + rand() * 0.6);
+      const py = h * (0.35 + rand() * 0.4);
+      const pr = h * (0.14 + rand() * 0.13);
+      const planetHue = HUES[Math.floor(rand() * HUES.length)];
+
+      if(rand() < 0.55){
+        g.save();
+        g.translate(px, py);
+        g.rotate(-0.35 + rand() * 0.2);
+        g.scale(1, 0.32);
+        g.beginPath();
+        g.arc(0, 0, pr * 1.7, 0, Math.PI * 2);
+        g.strokeStyle = `hsla(${planetHue}, 60%, 75%, 0.35)`;
+        g.lineWidth = pr * 0.06;
+        g.stroke();
+        g.restore();
+      }
+
+      const shade = g.createRadialGradient(px - pr*0.35, py - pr*0.35, pr*0.1, px, py, pr);
+      shade.addColorStop(0, `hsla(${planetHue}, 55%, 70%, 1)`);
+      shade.addColorStop(0.6, `hsla(${planetHue}, 60%, 45%, 1)`);
+      shade.addColorStop(1, `hsla(${(planetHue+20)%360}, 60%, 15%, 1)`);
+      g.fillStyle = shade;
+      g.beginPath();
+      g.arc(px, py, pr, 0, Math.PI*2);
+      g.fill();
+
+      // rim light
+      g.beginPath();
+      g.arc(px, py, pr, 0, Math.PI*2);
+      g.strokeStyle = `hsla(${planetHue}, 80%, 80%, 0.35)`;
+      g.lineWidth = 2;
+      g.stroke();
+    }
+
+    // stars
+    const starCount = 220;
+    for(let i = 0; i < starCount; i++){
+      const x = rand() * w, y = rand() * h;
+      const r = rand() * 1.4 + 0.2;
+      const gold = rand() < 0.15;
+      g.fillStyle = gold ? `rgba(242,193,78,${0.4 + rand()*0.5})` : `rgba(255,255,255,${0.3 + rand()*0.6})`;
+      g.beginPath();
+      g.arc(x, y, r, 0, Math.PI*2);
+      g.fill();
+    }
+
+    // a few sparkle stars
+    for(let i = 0; i < 5; i++){
+      const x = rand() * w, y = rand() * h * 0.8;
+      const r = 10 + rand() * 14;
+      const grad = g.createRadialGradient(x, y, 0, x, y, r);
+      grad.addColorStop(0, 'rgba(255,255,255,0.85)');
+      grad.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = grad;
+      g.beginPath();
+      g.arc(x, y, r, 0, Math.PI*2);
+      g.fill();
+    }
+
+    // vignette
+    const vg = g.createRadialGradient(w/2, h/2, h*0.35, w/2, h/2, h*0.85);
+    vg.addColorStop(0, 'rgba(0,0,0,0)');
+    vg.addColorStop(1, 'rgba(0,0,0,0.45)');
+    g.fillStyle = vg;
+    g.fillRect(0, 0, w, h);
+
+    return c.toDataURL('image/jpeg', 0.92);
+  }
+
+  /* ---------------- Folder auto-discovery ---------------- */
+  // Looks for a folder named "images" sitting next to this HTML file and
+  // loads whatever pictures it finds there, automatically, no manifest required
+  // if the file is served over http(s) (folder listing) — or via images/images.json
+  // if you want to control the exact order/set.
+  const IMAGE_EXTENSIONS = ['jpg','jpeg','png','gif','webp','avif','svg','bmp'];
+
+  async function discoverFolderImages(){
+    // 1) Optional manifest: images/images.json -> ["a.jpg","b.png", ...]
+    try{
+      const res = await fetch('images/images.json', {cache:'no-store'});
+      if(res.ok){
+        const list = await res.json();
+        if(Array.isArray(list) && list.length){
+          return list.map(name => 'images/' + name);
+        }
+      }
+    }catch(e){ /* no manifest, keep trying */ }
+
+    // 2) Directory listing: works when the folder is served by a server that
+    // auto-generates an index (e.g. `python3 -m http.server`).
+    try{
+      const res = await fetch('images/', {cache:'no-store'});
+      if(res.ok){
+        const html = await res.text();
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const hrefs = Array.from(doc.querySelectorAll('a[href]')).map(a => a.getAttribute('href') || '');
+        const found = hrefs.filter(h => IMAGE_EXTENSIONS.some(ext => h.toLowerCase().endsWith('.' + ext)));
+        if(found.length){
+          found.sort((a, b) => a.localeCompare(b, undefined, {numeric:true, sensitivity:'base'}));
+          return found.map(h => 'images/' + h);
+        }
+      }
+    }catch(e){ /* no listing available, fall back below */ }
+
+    return [];
+  }
+
+  /* ---------------- App state ---------------- */
+  const DEMO_COUNT = 6;
+  let images = [];
+  let usingDemoArt = false;
+  let index = 0;
+  let mode = 'default';
+  let carouselTimer = null;
+  const CAROUSEL_INTERVAL = 4200;
+
+  const layersEl = document.getElementById('imageLayers');
+  const dotsEl = document.getElementById('dots');
+  const counterEl = document.getElementById('counter');
+  const prevBtn = document.getElementById('prevBtn');
+  const nextBtn = document.getElementById('nextBtn');
+  const modeToggle = document.getElementById('modeToggle');
+  const fileInput = document.getElementById('fileInput');
+  const frameInner = document.querySelector('.frame-inner');
+
+  function buildDots(){
+    dotsEl.innerHTML = '';
+    images.forEach((_, i) => {
+      const b = document.createElement('button');
+      b.className = 'dot' + (i === index ? ' active' : '');
+      b.setAttribute('aria-label', 'Go to image ' + (i+1));
+      b.addEventListener('click', () => goTo(i, true));
+      dotsEl.appendChild(b);
+    });
+  }
+
+  function buildLayers(){
+    layersEl.innerHTML = '';
+    images.forEach((src, i) => {
+      const img = document.createElement('img');
+      img.src = src;
+      img.alt = 'Space artwork ' + (i+1);
+      if(i === index) img.classList.add('visible');
+      layersEl.appendChild(img);
+    });
+  }
+
+  function render(){
+    const imgs = layersEl.querySelectorAll('img');
+    imgs.forEach((img, i) => {
+      img.classList.toggle('visible', i === index);
+      img.classList.remove('kenburns');
+    });
+    if(imgs[index] && !reduceMotion){
+      void imgs[index].offsetWidth;
+      imgs[index].classList.add('kenburns');
+    }
+
+    const dots = dotsEl.querySelectorAll('.dot');
+    dots.forEach((d, i) => d.classList.toggle('active', i === index));
+
+    counterEl.textContent = (index + 1) + ' / ' + images.length;
+  }
+
+  function goTo(i, userInitiated){
+    index = ((i % images.length) + images.length) % images.length;
+    render();
+    if(userInitiated && mode === 'carousel'){
+      restartCarousel();
+    }
+  }
+
+  function next(){ goTo(index + 1); }
+  function prev(){ goTo(index - 1); }
+
+  prevBtn.addEventListener('click', () => { prev(); });
+  nextBtn.addEventListener('click', () => { next(); });
+
+  document.addEventListener('keydown', (e) => {
+    if(mode !== 'default') return;
+    if(e.key === 'ArrowRight') next();
+    if(e.key === 'ArrowLeft') prev();
+  });
+
+  // basic touch swipe
+  let touchStartX = null;
+  frameInner.addEventListener('touchstart', (e) => {
+    touchStartX = e.touches[0].clientX;
+  }, {passive:true});
+  frameInner.addEventListener('touchend', (e) => {
+    if(touchStartX === null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    if(Math.abs(dx) > 40){
+      if(dx < 0) next(); else prev();
+    }
+    touchStartX = null;
+  });
+
+  /* ---------------- Carousel control ---------------- */
+  function startCarousel(){
+    stopCarousel();
+    carouselTimer = setInterval(() => {
+      goTo(index + 1);
+    }, CAROUSEL_INTERVAL);
+  }
+  function stopCarousel(){
+    if(carouselTimer){ clearInterval(carouselTimer); carouselTimer = null; }
+  }
+  function restartCarousel(){
+    if(mode === 'carousel'){ startCarousel(); }
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if(document.hidden){ stopCarousel(); }
+    else if(mode === 'carousel'){ startCarousel(); }
+  });
+
+  frameInner.addEventListener('mouseenter', () => { if(mode === 'carousel') stopCarousel(); });
+  frameInner.addEventListener('mouseleave', () => { if(mode === 'carousel') startCarousel(); });
+
+  /* ---------------- Mode switching ---------------- */
+  function setMode(newMode){
+    mode = newMode;
+    modeToggle.dataset.mode = mode;
+
+    modeToggle.querySelectorAll('.mode-btn').forEach(btn => {
+      const active = btn.dataset.mode === mode;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+
+    const isDefault = mode === 'default';
+    prevBtn.classList.toggle('hidden', !isDefault);
+    nextBtn.classList.toggle('hidden', !isDefault);
+
+    if(isDefault){
+      stopCarousel();
+    } else {
+      startCarousel();
+    }
+  }
+
+  modeToggle.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => setMode(btn.dataset.mode));
+  });
+
+  /* ---------------- Upload ---------------- */
+  const folderNotice = document.getElementById('folderNotice');
+
+  fileInput.addEventListener('change', (e) => {
+    const files = Array.from(e.target.files || []);
+    if(!files.length) return;
+    const urls = files.map(f => URL.createObjectURL(f));
+    images = urls;
+    usingDemoArt = false;
+    folderNotice.hidden = true;
+    index = 0;
+    buildLayers();
+    buildDots();
+    render();
+    if(mode === 'carousel') restartCarousel();
+  });
+
+  /* ---------------- Init ---------------- */
+  async function init(){
+    const folderImages = await discoverFolderImages();
+
+    if(folderImages.length){
+      images = folderImages;
+      usingDemoArt = false;
+    } else {
+      images = Array.from({length: DEMO_COUNT}, (_, i) => generateSpaceArt(i));
+      usingDemoArt = true;
+    }
+
+    folderNotice.hidden = !usingDemoArt;
+    buildLayers();
+    buildDots();
+    render();
+    setMode('default');
+  }
+
+  init();
+})();
+</script>
+
+</body>
+</html>
